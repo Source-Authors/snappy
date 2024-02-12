@@ -337,6 +337,8 @@ target_include_directories(snappy
 )
 set_target_properties(snappy
   PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
+set_target_properties(snappy
+  PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 target_compile_definitions(snappy PRIVATE -DHAVE_CONFIG_H)
 if(BUILD_SHARED_LIBS)
