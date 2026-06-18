@@ -314,6 +314,7 @@ target_include_directories(snappy
 )
 set_target_properties(snappy
   PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
+# dimhotepus: Use static MSVC runtime.
 set_target_properties(snappy
   PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
@@ -338,6 +339,9 @@ if(SNAPPY_BUILD_TESTS OR SNAPPY_BUILD_BENCHMARKS)
   if(BUILD_SHARED_LIBS)
     set_target_properties(snappy_test_support PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
   endif(BUILD_SHARED_LIBS)
+  # dimhotepus: Use static MSVC runtime.
+  set_target_properties(snappy_test_support
+    PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
   target_link_libraries(snappy_test_support snappy)
 
@@ -360,14 +364,22 @@ endif(SNAPPY_BUILD_TESTS OR SNAPPY_BUILD_BENCHMARKS)
 if(SNAPPY_BUILD_TESTS)
   enable_testing()
 
+  # dimhotepus: Use static MSVC runtime.
   # Prevent overriding the parent project's compiler/linker settings on Windows.
-  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  set(gtest_force_shared_crt OFF CACHE BOOL "" FORCE)
   set(install_gtest OFF)
   set(install_gmock OFF)
   set(build_gmock ON)
 
   # This project is tested using GoogleTest.
   add_subdirectory("third_party/googletest")
+
+  # dimhotepus: Use static MSVC runtime.
+  set_target_properties(gmock
+    PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  # dimhotepus: Use static MSVC runtime.
+  set_target_properties(gmock_main
+    PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
   # GoogleTest triggers a missing field initializers warning.
   if(SNAPPY_HAVE_NO_MISSING_FIELD_INITIALIZERS)
@@ -388,6 +400,9 @@ if(SNAPPY_BUILD_TESTS)
       "snappy_unittest.cc"
   )
   target_link_libraries(snappy_unittest snappy_test_support gmock_main gtest)
+  # dimhotepus: Use static MSVC runtime.
+  set_target_properties(snappy_unittest
+    PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
   add_test(
     NAME snappy_unittest
@@ -400,6 +415,9 @@ if(SNAPPY_BUILD_TESTS)
       "snappy_test_tool.cc"
   )
   target_link_libraries(snappy_test_tool snappy_test_support)
+  # dimhotepus: Use static MSVC runtime.
+  set_target_properties(snappy_test_tool
+    PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif(SNAPPY_BUILD_TESTS)
 
 if(SNAPPY_BUILD_BENCHMARKS)
@@ -409,11 +427,21 @@ if(SNAPPY_BUILD_BENCHMARKS)
       "snappy_benchmark.cc"
   )
   target_link_libraries(snappy_benchmark snappy_test_support benchmark_main)
+  # dimhotepus: Use static MSVC runtime.
+  set_target_properties(snappy_benchmark
+    PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
   # This project uses Google benchmark for benchmarking.
   set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
   set(BENCHMARK_ENABLE_EXCEPTIONS OFF CACHE BOOL "" FORCE)
   add_subdirectory("third_party/benchmark")
+
+  # dimhotepus: Use static MSVC runtime.
+  set_target_properties(benchmark
+    PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  # dimhotepus: Use static MSVC runtime.
+  set_target_properties(benchmark_main
+    PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif(SNAPPY_BUILD_BENCHMARKS)
 
 if(SNAPPY_FUZZING_BUILD)
@@ -425,6 +453,9 @@ if(SNAPPY_FUZZING_BUILD)
   set_target_properties(snappy_compress_fuzzer
     PROPERTIES LINK_FLAGS "-fsanitize=fuzzer"
   )
+  # dimhotepus: Use static MSVC runtime.
+  set_target_properties(snappy_compress_fuzzer
+    PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
   add_executable(snappy_uncompress_fuzzer "")
   target_sources(snappy_uncompress_fuzzer
@@ -434,6 +465,9 @@ if(SNAPPY_FUZZING_BUILD)
   set_target_properties(snappy_uncompress_fuzzer
     PROPERTIES LINK_FLAGS "-fsanitize=fuzzer"
   )
+  # dimhotepus: Use static MSVC runtime.
+  set_target_properties(snappy_uncompress_fuzzer
+    PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif(SNAPPY_FUZZING_BUILD)
 
 # Must be included before CMAKE_INSTALL_INCLUDEDIR is used.
