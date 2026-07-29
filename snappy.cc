@@ -1865,7 +1865,9 @@ size_t Compress(Source* reader, Sink* writer) {
   return Compress(reader, writer, CompressionOptions{});
 }
 
-size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
+static size_t InternalCompress(Source* reader, Sink* writer,
+                               CompressionOptions options,
+                               internal::WorkingMemory* wmem) {
   assert(options.level == 1 || options.level == 2);
   size_t written = 0;
   size_t N = reader->Available();
@@ -1874,8 +1876,6 @@ size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
   char* p = Varint::Encode32(ulength, N);
   writer->Append(ulength, p - ulength);
   written += (p - ulength);
-
-  internal::WorkingMemory wmem(N);
 
   while (N > 0) {
     // Get next block to compress (without copying if possible)
@@ -1891,7 +1891,7 @@ size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
       pending_advance = num_to_read;
       fragment_size = num_to_read;
     } else {
-      char* scratch = wmem.GetScratchInput();
+      char* scratch = wmem->GetScratchInput();
       std::memcpy(scratch, fragment, bytes_read);
       reader->Skip(bytes_read);
 
@@ -1910,7 +1910,7 @@ size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
 
     // Get encoding table for compression
     int table_size;
-    uint16_t* table = wmem.GetHashTable(num_to_read, &table_size);
+    uint16_t* table = wmem->GetHashTable(num_to_read, &table_size);
 
     // Compress input_fragment and append to dest
     int max_output = MaxCompressedLength(num_to_read);
@@ -1920,7 +1920,7 @@ size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
     // scratch_output[] region is big enough for this iteration.
     // Need a scratch buffer for the output, in case the byte sink doesn't
     // have room for us directly.
-    char* dest = writer->GetAppendBuffer(max_output, wmem.GetScratchOutput());
+    char* dest = writer->GetAppendBuffer(max_output, wmem->GetScratchOutput());
     char* end = nullptr;
       if (options.level == 1) {
         end = internal::CompressFragment(fragment, fragment_size, dest, table,
@@ -1938,6 +1938,11 @@ size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
     reader->Skip(pending_advance);
   }
   return written;
+}
+
+size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
+  internal::WorkingMemory wmem(reader->Available());
+  return InternalCompress(reader, writer, options, &wmem);
 }
 
 // -----------------------------------------------------------------------
