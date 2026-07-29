@@ -88,7 +88,18 @@ namespace snappy {
   // may only be destroyed or assigned to.
   class CompressionContext {
    public:
+    // Allocates the working memory on the heap.
     CompressionContext();
+
+    // Constructs a context whose working memory is placed in the
+    // caller-provided "workspace" instead of being heap-allocated; the
+    // library performs no allocation at all.
+    //
+    // REQUIRES: "workspace" points to at least "workspace_size" bytes with
+    // "workspace_size >= WorkspaceSize()", is suitably aligned for any
+    // object type (as if returned by malloc), and outlives "*this".
+    CompressionContext(void* workspace, size_t workspace_size);
+
     ~CompressionContext();
 
     CompressionContext(CompressionContext&& other) noexcept;
@@ -97,11 +108,20 @@ namespace snappy {
     CompressionContext(const CompressionContext&) = delete;
     CompressionContext& operator=(const CompressionContext&) = delete;
 
+    // The workspace size required by the non-allocating constructor above.
+    static size_t WorkspaceSize();
+
    private:
     friend size_t Compress(Source* reader, Sink* writer,
                            CompressionOptions options, CompressionContext* ctx);
 
+    // Destroys the working memory as appropriate for how it was created
+    // (delete if heap-allocated, in-place destruction if placement-constructed
+    // in a caller-provided workspace).
+    void Reset();
+
     internal::WorkingMemory* working_memory_;
+    bool owns_working_memory_;
   };
 
   // ------------------------------------------------------------------------

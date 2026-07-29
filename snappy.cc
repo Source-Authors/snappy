@@ -76,6 +76,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <new>
 #include <string>
 #include <utility>
 #include <vector>
@@ -757,19 +758,36 @@ uint32_t CalculateTableSize(uint32_t input_size) {
 }  // namespace
 
 namespace internal {
-WorkingMemory::WorkingMemory(size_t input_size) {
+size_t WorkingMemory::RequiredSize(size_t input_size) {
   const size_t max_fragment_size = std::min(input_size, kBlockSize);
   const size_t table_size = CalculateTableSize(max_fragment_size);
-  size_ = table_size * sizeof(*table_) + max_fragment_size +
-          MaxCompressedLength(max_fragment_size);
-  mem_ = std::allocator<char>().allocate(size_);
+  return table_size * sizeof(uint16_t) + max_fragment_size +
+         MaxCompressedLength(max_fragment_size);
+}
+
+WorkingMemory::WorkingMemory(size_t input_size)
+    : WorkingMemory(input_size,
+                    std::allocator<char>().allocate(RequiredSize(input_size))) {
+  owns_mem_ = true;
+}
+
+WorkingMemory::WorkingMemory(size_t input_size, char* buffer) {
+  assert(buffer != nullptr);
+  assert(reinterpret_cast<uintptr_t>(buffer) % alignof(uint16_t) == 0);
+  const size_t max_fragment_size = std::min(input_size, kBlockSize);
+  const size_t table_size = CalculateTableSize(max_fragment_size);
+  mem_ = buffer;
+  size_ = RequiredSize(input_size);
+  owns_mem_ = false;
   table_ = reinterpret_cast<uint16_t*>(mem_);
   input_ = mem_ + table_size * sizeof(*table_);
   output_ = input_ + max_fragment_size;
 }
 
 WorkingMemory::~WorkingMemory() {
-  std::allocator<char>().deallocate(mem_, size_);
+  if (owns_mem_) {
+    std::allocator<char>().deallocate(mem_, size_);
+  }
 }
 
 uint16_t* WorkingMemory::GetHashTable(size_t fragment_size,
@@ -1953,20 +1971,51 @@ size_t Compress(Source* reader, Sink* writer, CompressionOptions options,
 }
 
 CompressionContext::CompressionContext()
-    : working_memory_(new internal::WorkingMemory(kBlockSize)) {}
+    : working_memory_(new internal::WorkingMemory(kBlockSize)),
+      owns_working_memory_(true) {}
 
-CompressionContext::~CompressionContext() { delete working_memory_; }
+size_t CompressionContext::WorkspaceSize() {
+  return sizeof(internal::WorkingMemory) +
+         internal::WorkingMemory::RequiredSize(kBlockSize);
+}
+
+CompressionContext::CompressionContext(void* workspace, size_t workspace_size)
+    : owns_working_memory_(false) {
+  assert(workspace != nullptr);
+  assert(workspace_size >= WorkspaceSize());
+  assert(reinterpret_cast<uintptr_t>(workspace) %
+             alignof(internal::WorkingMemory) ==
+         0);
+  (void)workspace_size;
+  char* base = static_cast<char*>(workspace);
+  working_memory_ = new (base) internal::WorkingMemory(
+      kBlockSize, base + sizeof(internal::WorkingMemory));
+}
+
+void CompressionContext::Reset() {
+  if (working_memory_ == nullptr) return;
+  if (owns_working_memory_) {
+    delete working_memory_;
+  } else {
+    working_memory_->~WorkingMemory();
+  }
+  working_memory_ = nullptr;
+}
+
+CompressionContext::~CompressionContext() { Reset(); }
 
 CompressionContext::CompressionContext(CompressionContext&& other) noexcept
-    : working_memory_(other.working_memory_) {
+    : working_memory_(other.working_memory_),
+      owns_working_memory_(other.owns_working_memory_) {
   other.working_memory_ = nullptr;
 }
 
 CompressionContext& CompressionContext::operator=(
     CompressionContext&& other) noexcept {
   if (this != &other) {
-    delete working_memory_;
+    Reset();
     working_memory_ = other.working_memory_;
+    owns_working_memory_ = other.owns_working_memory_;
     other.working_memory_ = nullptr;
   }
   return *this;
