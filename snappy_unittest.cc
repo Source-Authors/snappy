@@ -543,6 +543,58 @@ TEST(Snappy, RandomData) {
   }
 }
 
+TEST(Snappy, CompressionContext) {
+  std::minstd_rand0 rng(snappy::GetFlag(FLAGS_test_random_seed));
+  std::uniform_int_distribution<int> uniform_byte(0, 255);
+
+  // A single context, reused across every compression below.
+  CompressionContext ctx;
+
+  const size_t sizes[] = {0,
+                          1,
+                          100,
+                          kBlockSize - 1,
+                          kBlockSize,
+                          kBlockSize + 1,
+                          2 * kBlockSize,
+                          (1 << 20) + 17};
+  for (int level = CompressionOptions::MinCompressionLevel();
+       level <= CompressionOptions::MaxCompressionLevel(); ++level) {
+    CompressionOptions options(level);
+    for (size_t len : sizes) {
+      for (bool compressible : {true, false}) {
+        std::string input;
+        input.reserve(len);
+        while (input.size() < len) {
+          input.push_back(compressible
+                              ? static_cast<char>('a' + input.size() % 4)
+                              : static_cast<char>(uniform_byte(rng)));
+        }
+
+        std::string plain(MaxCompressedLength(len), '\0');
+        size_t plain_len = 0;
+        RawCompress(input.data(), input.size(), &plain[0], &plain_len, options);
+        plain.resize(plain_len);
+
+        std::string with_context(MaxCompressedLength(len), '\0');
+        size_t with_context_len = 0;
+        RawCompress(input.data(), input.size(), &with_context[0],
+                    &with_context_len, options, &ctx);
+        with_context.resize(with_context_len);
+
+        // Compressing with a reused context must produce output identical to
+        // the context-free API.
+        EXPECT_EQ(plain, with_context) << "level=" << level << " len=" << len
+                                       << " compressible=" << compressible;
+
+        std::string uncompressed;
+        EXPECT_TRUE(Uncompress(with_context, &uncompressed));
+        EXPECT_EQ(input, uncompressed);
+      }
+    }
+  }
+}
+
 TEST(Snappy, FourByteOffset) {
   // The new compressor cannot generate four-byte offsets since
   // it chops up the input into 32KB pieces.  So we hand-emit the

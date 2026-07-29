@@ -1945,6 +1945,33 @@ size_t Compress(Source* reader, Sink* writer, CompressionOptions options) {
   return InternalCompress(reader, writer, options, &wmem);
 }
 
+size_t Compress(Source* reader, Sink* writer, CompressionOptions options,
+                CompressionContext* ctx) {
+  assert(ctx != nullptr);
+  assert(ctx->working_memory_ != nullptr);
+  return InternalCompress(reader, writer, options, ctx->working_memory_);
+}
+
+CompressionContext::CompressionContext()
+    : working_memory_(new internal::WorkingMemory(kBlockSize)) {}
+
+CompressionContext::~CompressionContext() { delete working_memory_; }
+
+CompressionContext::CompressionContext(CompressionContext&& other) noexcept
+    : working_memory_(other.working_memory_) {
+  other.working_memory_ = nullptr;
+}
+
+CompressionContext& CompressionContext::operator=(
+    CompressionContext&& other) noexcept {
+  if (this != &other) {
+    delete working_memory_;
+    working_memory_ = other.working_memory_;
+    other.working_memory_ = nullptr;
+  }
+  return *this;
+}
+
 // -----------------------------------------------------------------------
 // IOVec interfaces
 // -----------------------------------------------------------------------
@@ -2385,6 +2412,17 @@ void RawCompress(const char* input, size_t input_length, char* compressed,
   ByteArraySource reader(input, input_length);
   UncheckedByteArraySink writer(compressed);
   Compress(&reader, &writer, options);
+
+  // Compute how many bytes were added
+  *compressed_length = (writer.CurrentDestination() - compressed);
+}
+
+void RawCompress(const char* input, size_t input_length, char* compressed,
+                 size_t* compressed_length, CompressionOptions options,
+                 CompressionContext* ctx) {
+  ByteArraySource reader(input, input_length);
+  UncheckedByteArraySink writer(compressed);
+  Compress(&reader, &writer, options, ctx);
 
   // Compute how many bytes were added
   *compressed_length = (writer.CurrentDestination() - compressed);
