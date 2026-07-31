@@ -137,7 +137,15 @@ inline V128 V128_DupChar(char c) { return vdupq_n_u8(c); }
 class WorkingMemory {
  public:
   explicit WorkingMemory(size_t input_size);
+
+  // Non-allocating: lays out the scratch space in the caller-provided
+  // buffer, which must be at least RequiredSize(input_size) bytes, aligned
+  // at least as strictly as uint16_t, and must outlive "*this".
+  WorkingMemory(size_t input_size, char* buffer);
   ~WorkingMemory();
+
+  // The buffer size required by the non-allocating constructor above.
+  static size_t RequiredSize(size_t input_size);
 
   // Allocates and clears a hash table using memory in "*this",
   // stores the number of buckets in "*table_size" and returns a pointer to
@@ -149,6 +157,7 @@ class WorkingMemory {
  private:
   char* mem_;        // the allocated memory, never nullptr
   size_t size_;      // the size of the allocated memory, never 0
+  bool owns_mem_;    // whether the destructor should free mem_
   uint16_t* table_;  // the pointer to the hashtable
   char* input_;      // the pointer to the input scratch buffer
   char* output_;     // the pointer to the output scratch buffer

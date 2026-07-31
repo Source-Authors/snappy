@@ -50,6 +50,10 @@ namespace snappy {
   class Source;
   class Sink;
 
+  namespace internal {
+  class WorkingMemory;
+  }  // end namespace internal
+
   struct CompressionOptions {
     // Compression level.
     // Level 1 is the fastest
@@ -73,6 +77,53 @@ namespace snappy {
     static constexpr int DefaultCompressionLevel() { return 1; }
   };
 
+  // Scratch memory for compression, reusable across compressions. Callers that
+  // compress frequently, or that need to avoid large heap allocations can
+  // allocate a CompressionContext once and pass it to Compress()/RawCompress()
+  // to reuse the working memory across calls.
+  //
+  // The context is sized for the largest block and works for inputs of any
+  // size. A context may be used by any number of sequential compressions, but
+  // must not be used from multiple threads concurrently. A moved-from context
+  // may only be destroyed or assigned to.
+  class CompressionContext {
+   public:
+    // Allocates the working memory on the heap.
+    CompressionContext();
+
+    // Constructs a context whose working memory is placed in the
+    // caller-provided "workspace" instead of being heap-allocated; the
+    // library performs no allocation at all.
+    //
+    // REQUIRES: "workspace" points to at least "workspace_size" bytes with
+    // "workspace_size >= WorkspaceSize()", is suitably aligned for any
+    // object type (as if returned by malloc), and outlives "*this".
+    CompressionContext(void* workspace, size_t workspace_size);
+
+    ~CompressionContext();
+
+    CompressionContext(CompressionContext&& other) noexcept;
+    CompressionContext& operator=(CompressionContext&& other) noexcept;
+
+    CompressionContext(const CompressionContext&) = delete;
+    CompressionContext& operator=(const CompressionContext&) = delete;
+
+    // The workspace size required by the non-allocating constructor above.
+    static size_t WorkspaceSize();
+
+   private:
+    friend size_t Compress(Source* reader, Sink* writer,
+                           CompressionOptions options, CompressionContext* ctx);
+
+    // Destroys the working memory as appropriate for how it was created
+    // (delete if heap-allocated, in-place destruction if placement-constructed
+    // in a caller-provided workspace).
+    void Reset();
+
+    internal::WorkingMemory* working_memory_;
+    bool owns_working_memory_;
+  };
+
   // ------------------------------------------------------------------------
   // Generic compression/decompression routines.
   // ------------------------------------------------------------------------
@@ -83,6 +134,11 @@ namespace snappy {
   size_t Compress(Source* reader, Sink* writer);
   size_t Compress(Source* reader, Sink* writer,
                   CompressionOptions options);
+
+  // Same as the above, but uses the working memory of "*ctx" instead of
+  // allocating it internally. See CompressionContext.
+  size_t Compress(Source* reader, Sink* writer, CompressionOptions options,
+                  CompressionContext* ctx);
 
   // Find the uncompressed length of the given stream, as given by the header.
   // Note that the true length could deviate from this; the stream could e.g.
@@ -164,6 +220,12 @@ namespace snappy {
                    size_t* compressed_length);
   void RawCompress(const char* input, size_t input_length, char* compressed,
                    size_t* compressed_length, CompressionOptions options);
+
+  // Same as the above, but uses the working memory of "*ctx" instead of
+  // allocating it internally. See CompressionContext.
+  void RawCompress(const char* input, size_t input_length, char* compressed,
+                   size_t* compressed_length, CompressionOptions options,
+                   CompressionContext* ctx);
 
   // Same as `RawCompress` above but taking an `iovec` array as input. Note that
   // `uncompressed_length` is the total number of bytes to be read from the
